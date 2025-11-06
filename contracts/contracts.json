@@ -1,0 +1,114 @@
+{
+  "shipments": {
+    "required": [
+      "shipment_id",
+      "lot_id",
+      "lane",
+      "origin_ts",
+      "delivered_ts",
+      "carrier",
+      "status"
+    ],
+    "unique": [
+      "shipment_id"
+    ],
+    "types": {
+      "shipment_id": "str",
+      "lot_id": "str",
+      "lane": "str",
+      "origin_ts": "datetime",
+      "delivered_ts": "datetime",
+      "carrier": "str",
+      "status": "str"
+    }
+  },
+  "events": {
+    "required": [
+      "event_id",
+      "shipment_id",
+      "actor",
+      "event_type",
+      "event_ts",
+      "location_id"
+    ],
+    "types": {
+      "event_id": "str",
+      "shipment_id": "str",
+      "actor": "str",
+      "event_type": "str",
+      "event_ts": "datetime",
+      "location_id": "str"
+    },
+    "allowed_values": {
+      "actor": [
+        "manufacturer",
+        "3PL",
+        "carrier",
+        "pharmacy"
+      ],
+      "event_type": [
+        "departed",
+        "arrived",
+        "handoff",
+        "accepted"
+      ]
+    }
+  },
+  "sensors": {
+    "required": [
+      "reading_id",
+      "shipment_id",
+      "device_id",
+      "timestamp",
+      "temp_c",
+      "battery_pct"
+    ],
+    "types": {
+      "reading_id": "str",
+      "shipment_id": "str",
+      "device_id": "str",
+      "timestamp": "datetime",
+      "temp_c": "float",
+      "battery_pct": "float"
+    },
+    "ranges": {
+      "temp_c": {
+        "min": -5.0,
+        "max": 15.0
+      },
+      "battery_pct": {
+        "min": 0.0,
+        "max": 100.0
+      }
+    }
+  },
+  "exceptions": {
+    "required": [
+      "exception_id",
+      "shipment_id",
+      "timestamp",
+      "exception_code",
+      "severity"
+    ],
+    "types": {
+      "exception_id": "str",
+      "shipment_id": "str",
+      "timestamp": "datetime",
+      "exception_code": "str",
+      "severity": "str"
+    },
+    "allowed_values": {
+      "exception_code": [
+        "carrier_delay",
+        "packaging_failure",
+        "pharmacy_queue",
+        "other"
+      ],
+      "severity": [
+        "low",
+        "medium",
+        "high"
+      ]
+    }
+  }
+}
