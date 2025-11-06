@@ -1,0 +1,5 @@
+entity,definition,units,sampling_cadence,acceptable_range
+shipment,A discrete order moving through the cold chain,N/A,N/A,N/A
+event,"A state change such as depart, arrive, handoff, accept",N/A,N/A,N/A
+sensor_reading,Telemetry from a temperature device,celsius,5 min to 90 min,2 to 8 C expected
+exception,An operational deviation with a coded classification,N/A,event-based,governed exception codes

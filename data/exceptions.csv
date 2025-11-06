@@ -1,0 +1,17 @@
+exception_id,shipment_id,timestamp,exception_code,severity,notes
+X0001,S0001,2025-08-25T15:36:35.234869,pharmacy_queue,low,Auto-generated pharmacy_queue
+X0002,S0002,2025-09-25T19:36:35.234869,other,medium,Auto-generated other
+X0007,S0007,2025-10-04T11:36:35.234869,pharmacy_queue,low,Auto-generated pharmacy_queue
+X0010,S0010,2025-10-12T17:36:35.234869,packaging_failure,low,Auto-generated packaging_failure
+X0011,S0011,2025-09-17T23:36:35.234869,packaging_failure,high,Auto-generated packaging_failure
+X0020,S0020,2025-09-18T10:36:35.234869,packaging_failure,medium,Auto-generated packaging_failure
+X0021,S0021,2025-09-02T13:36:35.234869,packaging_failure,low,Auto-generated packaging_failure
+X0022,S0022,2025-08-22T00:36:35.234869,carrier_delay,high,Auto-generated carrier_delay
+X0027,S0027,2025-10-27T11:36:35.234869,pharmacy_queue,medium,Auto-generated pharmacy_queue
+X0032,S0032,2025-09-02T04:36:35.234869,packaging_failure,low,Auto-generated packaging_failure
+X0033,S0033,2025-10-17T00:36:35.234869,other,high,Auto-generated other
+X0038,S0038,2025-09-03T06:36:35.234869,pharmacy_queue,high,Auto-generated pharmacy_queue
+X0039,S0039,2025-10-05T11:36:35.234869,other,low,Auto-generated other
+X0040,S0040,2025-09-01T01:36:35.234869,other,medium,Auto-generated other
+X0045,S0045,2025-09-18T08:36:35.234869,packaging_failure,low,Auto-generated packaging_failure
+X0050,S0050,2025-10-06T06:36:35.234869,carrier_delay,high,Auto-generated carrier_delay
