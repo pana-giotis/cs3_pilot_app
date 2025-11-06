@@ -10,31 +10,40 @@ st.title("Cold-Chain Knowledge Management Pilot")
 
 @st.cache_data
 def load_data():
-    shipments = pd.read_csv("data/shipments.csv", parse_dates=["origin_ts", "delivered_ts"])
-    events = pd.read_csv("data/events.csv", dtype=str)        # keep raw for Quality checks
-    sensors = pd.read_csv("data/sensors.csv", dtype=str)      # keep raw for Quality checks
-    exceptions = pd.read_csv("data/exceptions.csv", dtype=str)
+    # Load RAW files (string-friendly) for Quality validation
+    shipments_raw = pd.read_csv("data/shipments.csv", dtype=str)
+    events_raw = pd.read_csv("data/events.csv", dtype=str)
+    sensors_raw = pd.read_csv("data/sensors.csv", dtype=str)
+    exceptions_raw = pd.read_csv("data/exceptions.csv", dtype=str)
     catalog = pd.read_csv("data/catalog_entities.csv")
     with open("contracts/contracts.json", "r") as f:
         contracts = json.load(f)
-    # Analytics-friendly casts (we’ll still re-read raw sensors for Quality)
-    sensors_cast = sensors.copy()
-    sensors_cast["temp_c"] = pd.to_numeric(sensors_cast["temp_c"], errors="coerce")
-    sensors_cast["battery_pct"] = pd.to_numeric(sensors_cast["battery_pct"], errors="coerce")
-    sensors_cast["timestamp"] = pd.to_datetime(sensors_cast["timestamp"], errors="coerce")
-    return shipments, events, sensors, sensors_cast, exceptions, catalog, contracts
 
-shipments, events_raw, sensors_raw, sensors, exceptions_raw, catalog, contracts = load_data()
+    # Casted copies for Analytics (safe coercion)
+    shipments = shipments_raw.copy()
+    shipments["origin_ts"] = pd.to_datetime(shipments["origin_ts"], errors="coerce")
+    shipments["delivered_ts"] = pd.to_datetime(shipments["delivered_ts"], errors="coerce")
+
+    sensors = sensors_raw.copy()
+    sensors["timestamp"] = pd.to_datetime(sensors["timestamp"], errors="coerce")
+    sensors["temp_c"] = pd.to_numeric(sensors["temp_c"], errors="coerce")
+    sensors["battery_pct"] = pd.to_numeric(sensors["battery_pct"], errors="coerce")
+
+    exceptions = exceptions_raw.copy()
+    if "timestamp" in exceptions.columns:
+        exceptions["timestamp"] = pd.to_datetime(exceptions["timestamp"], errors="coerce")
+
+    return shipments_raw, events_raw, sensors_raw, exceptions_raw, shipments, sensors, exceptions, catalog, contracts
+
+shipments_raw, events_raw, sensors_raw, exceptions_raw, shipments, sensors, exceptions, catalog, contracts = load_data()
 tabs = st.tabs(["Catalog", "Lineage", "Quality", "Analytics", "Exceptions"])
 
 with tabs[0]:
     st.subheader("Catalog")
-    st.write("Definitions, units, ranges, and sampling cadence for core entities.")
     st.dataframe(catalog, use_container_width=True)
 
 with tabs[1]:
     st.subheader("Lineage (raw → curated → metrics)")
-    st.write("A compact graph that depicts how raw files become curated tables and published metrics.")
     G = nx.DiGraph()
     G.add_edges_from([
         ("raw_shipments.csv", "curated_shipments"),
@@ -65,9 +74,9 @@ with tabs[2]:
                 continue
             try:
                 if t == "datetime":
-                    pd.to_datetime(df[c])
+                    pd.to_datetime(df[c], errors="raise")
                 elif t == "float":
-                    pd.to_numeric(df[c], errors="raise")  # robust numeric validation
+                    pd.to_numeric(df[c], errors="raise")
                 # treat "str" as pass-through
             except Exception:
                 problems.append((c, f"type {t} cast failed"))
@@ -90,18 +99,16 @@ with tabs[2]:
         issues = []
         for c, rr in ranges.items():
             if c in df.columns:
-                # coerce to numeric so comparisons never break on strings from the bad batch
-                series = pd.to_numeric(df[c], errors="coerce")
+                ser = pd.to_numeric(df[c], errors="coerce")
                 mn, mx = rr.get("min"), rr.get("max")
-                bad = (series < mn) | (series > mx)
+                bad = (ser < mn) | (ser > mx)
                 count_bad = int(bad.fillna(False).sum())
                 if count_bad > 0:
                     issues.append((c, count_bad))
         return issues
 
-    # Use RAW files for validation so bad rows are visible to the validator
     datasets = {
-        "shipments": pd.read_csv("data/shipments.csv"),
+        "shipments": shipments_raw,
         "events": events_raw,
         "sensors": sensors_raw,
         "exceptions": exceptions_raw
@@ -116,12 +123,12 @@ with tabs[2]:
         allowed_bad = check_allowed_values(df, spec.get("allowed_values", {}))
         range_bad = check_ranges(df, spec.get("ranges", {}))
 
-        col1, col2, col3, col4, col5 = st.columns(5)
-        col1.metric("Missing fields", len(missing))
-        col2.metric("Type issues", len(types_bad))
-        col3.metric("Duplicate key rows", sum(v for v in unique_bad.values() if v is not None))
-        col4.metric("Bad categorical values", len(allowed_bad))
-        col5.metric("Out-of-range values", len(range_bad))
+        c1, c2, c3, c4, c5 = st.columns(5)
+        c1.metric("Missing fields", len(missing))
+        c2.metric("Type issues", len(types_bad))
+        c3.metric("Duplicate key rows", sum(v for v in unique_bad.values() if v is not None))
+        c4.metric("Bad categorical values", len(allowed_bad))
+        c5.metric("Out-of-range values", len(range_bad))
 
         with st.expander("Details"):
             st.write({"missing_fields": missing})
@@ -133,104 +140,103 @@ with tabs[2]:
 with tabs[3]:
     st.subheader("Analytics")
 
-    # Filter out rows without valid timestamps for calculations
+    # Use casted copies and drop rows with invalid timestamps before calculations
     sensors_valid = sensors.dropna(subset=["timestamp"]).copy()
+    shipments_valid = shipments.dropna(subset=["origin_ts", "delivered_ts"]).copy()
+
     sensors_valid["in_range"] = (sensors_valid["temp_c"] >= 2.0) & (sensors_valid["temp_c"] <= 8.0)
 
-    excursion_by_shipment = sensors_valid.groupby("shipment_id")["in_range"].apply(lambda x: (~x).any()).reset_index()
-    excursion_rate = excursion_by_shipment["in_range"].mean() if not excursion_by_shipment.empty else np.nan
+    if sensors_valid.empty or shipments_valid.empty:
+        st.warning("Insufficient valid data for analytics due to invalid timestamps in the bad batch.")
+    else:
+        excursion_by_ship = sensors_valid.groupby("shipment_id")["in_range"].apply(lambda x: (~x).any()).reset_index()
+        excursion_rate = excursion_by_ship["in_range"].mean() if not excursion_by_ship.empty else np.nan
 
-    def mttd_for_shipment(sid):
-        s = sensors_valid[sensors_valid["shipment_id"] == sid].sort_values("timestamp")
-        if s.empty:
-            return np.nan
-        origin = shipments.loc[shipments["shipment_id"] == sid, "origin_ts"]
-        if origin.empty:
-            return np.nan
-        origin = pd.to_datetime(origin.values[0])
-        out = s[~s["in_range"]]
-        if out.empty:
-            return np.nan
-        return (out["timestamp"].iloc[0] - origin).total_seconds() / 3600.0
+        def mttd_for_shipment(sid):
+            s = sensors_valid[sensors_valid["shipment_id"] == sid].sort_values("timestamp")
+            if s.empty:
+                return np.nan
+            origin = shipments_valid.loc[shipments_valid["shipment_id"] == sid, "origin_ts"]
+            if origin.empty:
+                return np.nan
+            origin = origin.iloc[0]
+            out = s[~s["in_range"]]
+            if out.empty:
+                return np.nan
+            return (out["timestamp"].iloc[0] - origin).total_seconds() / 3600.0
 
-    def mtr_for_shipment(sid):
-        s = sensors_valid[sensors_valid["shipment_id"] == sid].sort_values("timestamp")
-        if s.empty:
-            return np.nan
-        out = s[~s["in_range"]]
-        if out.empty:
-            return np.nan
-        t0 = out["timestamp"].iloc[0]
-        after = s[s["timestamp"] > t0]
-        back_in = after[after["in_range"]]
-        if back_in.empty:
-            return np.nan
-        return (back_in["timestamp"].iloc[0] - t0).total_seconds() / 3600.0
+        def mtr_for_shipment(sid):
+            s = sensors_valid[sensors_valid["shipment_id"] == sid].sort_values("timestamp")
+            if s.empty:
+                return np.nan
+            out = s[~s["in_range"]]
+            if out.empty:
+                return np.nan
+            t0 = out["timestamp"].iloc[0]
+            after = s[s["timestamp"] > t0]
+            back_in = after[after["in_range"]]
+            if back_in.empty:
+                return np.nan
+            return (back_in["timestamp"].iloc[0] - t0).total_seconds() / 3600.0
 
-    mttd_vals = [mttd_for_shipment(sid) for sid in shipments["shipment_id"]]
-    mtr_vals = [mtr_for_shipment(sid) for sid in shipments["shipment_id"]]
-    mttd = np.nanmean(mttd_vals)
-    mtr = np.nanmean(mtr_vals)
+        mttd_vals = [mttd_for_shipment(sid) for sid in shipments_valid["shipment_id"]]
+        mtr_vals = [mtr_for_shipment(sid) for sid in shipments_valid["shipment_id"]]
+        mttd = np.nanmean(mttd_vals)
+        mtr = np.nanmean(mtr_vals)
 
-    shipments["duration_h"] = (shipments["delivered_ts"] - shipments["origin_ts"]).dt.total_seconds() / 3600.0
-    on_time = (shipments["duration_h"] <= 96).mean()
+        shipments_valid["duration_h"] = (shipments_valid["delivered_ts"] - shipments_valid["origin_ts"]).dt.total_seconds() / 3600.0
+        on_time = (shipments_valid["duration_h"] <= 96).mean()
 
-    st.markdown("**Global KPIs**")
-    st.caption("These reflect the entire lane in this synthetic dataset.")
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Excursion rate (per shipment)", f"{excursion_rate:.2%}" if not np.isnan(excursion_rate) else "N/A")
-    col2.metric("Mean time to detect (hrs)", f"{mttd:.1f}" if not np.isnan(mttd) else "N/A")
-    col3.metric("Mean time to resolve (hrs)", f"{mtr:.1f}" if not np.isnan(mtr) else "N/A")
-    col4.metric("On-time arrival rate", f"{on_time:.2%}")
+        st.markdown("**Global KPIs**")
+        st.caption("These reflect the entire lane in this synthetic dataset.")
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Excursion rate (per shipment)", f"{excursion_rate:.2%}" if not np.isnan(excursion_rate) else "N/A")
+        col2.metric("Mean time to detect (hrs)", f"{mttd:.1f}" if not np.isnan(mttd) else "N/A")
+        col3.metric("Mean time to resolve (hrs)", f"{mtr:.1f}" if not np.isnan(mtr) else "N/A")
+        col4.metric("On-time arrival rate", f"{on_time:.2%}")
 
-    st.markdown("**Control view for a sample shipment**")
-    sid = st.selectbox("Choose shipment", shipments["shipment_id"].tolist())
-    s_sel = sensors[sensors["shipment_id"] == sid].sort_values("timestamp").dropna(subset=["timestamp"])
-    fig, ax = plt.subplots(figsize=(8, 3))
-    ax.plot(s_sel["timestamp"], s_sel["temp_c"], marker="o")
-    ax.axhline(2.0)
-    ax.axhline(8.0)
-    ax.set_ylabel("temp_c")
-    ax.set_xlabel("timestamp")
-    st.pyplot(fig)
+        st.markdown("**Control view for a sample shipment**")
+        sid = st.selectbox("Choose shipment", shipments_valid["shipment_id"].tolist())
+        s_sel = sensors_valid[sensors_valid["shipment_id"] == sid].sort_values("timestamp")
+        fig, ax = plt.subplots(figsize=(8, 3))
+        ax.plot(s_sel["timestamp"], s_sel["temp_c"], marker="o")
+        ax.axhline(2.0); ax.axhline(8.0)
+        ax.set_ylabel("temp_c"); ax.set_xlabel("timestamp")
+        st.pyplot(fig)
 
-    # Selected shipment KPIs
-    st.markdown("**Selected shipment KPIs**")
-    in_range = (s_sel["temp_c"] >= 2.0) & (s_sel["temp_c"] <= 8.0)
-    had_exc = (~in_range).any()
+        # Selected shipment KPIs
+        st.markdown("**Selected shipment KPIs**")
+        in_range = (s_sel["temp_c"] >= 2.0) & (s_sel["temp_c"] <= 8.0)
+        had_exc = (~in_range).any()
 
-    def first_out_in(df_local):
-        inr = (df_local["temp_c"] >= 2.0) & (df_local["temp_c"] <= 8.0)
-        out = df_local[~inr]
-        if len(out) == 0:
-            return None, None
-        t_out = out["timestamp"].iloc[0]
-        after = df_local[df_local["timestamp"] > t_out]
-        back_in = after[(after["temp_c"] >= 2.0) & (after["temp_c"] <= 8.0)]
-        t_in = back_in["timestamp"].iloc[0] if len(back_in) else None
-        return t_out, t_in
+        def first_out_in(df_local):
+            inr = (df_local["temp_c"] >= 2.0) & (df_local["temp_c"] <= 8.0)
+            out = df_local[~inr]
+            if len(out) == 0:
+                return None, None
+            t_out = out["timestamp"].iloc[0]
+            after = df_local[df_local["timestamp"] > t_out]
+            back_in = after[(after["temp_c"] >= 2.0) & (after["temp_c"] <= 8.0)]
+            t_in = back_in["timestamp"].iloc[0] if len(back_in) else None
+            return t_out, t_in
 
-    t_out, t_in = first_out_in(s_sel)
-    row = shipments[shipments["shipment_id"] == sid].iloc[0]
-    origin = row["origin_ts"]
-    duration_h = (row["delivered_ts"] - row["origin_ts"]).total_seconds() / 3600.0
-    is_on_time = duration_h <= 96
+        t_out, t_in = first_out_in(s_sel)
+        row = shipments_valid[shipments_valid["shipment_id"] == sid].iloc[0]
+        origin = row["origin_ts"]
+        duration_h = (row["delivered_ts"] - row["origin_ts"]).total_seconds() / 3600.0
+        is_on_time = duration_h <= 96
 
-    mttd_sel = (t_out - origin).total_seconds() / 3600.0 if t_out is not None else None
-    mtr_sel = (t_in - t_out).total_seconds() / 3600.0 if (t_out is not None and t_in is not None) else None
+        mttd_sel = (t_out - origin).total_seconds() / 3600.0 if t_out is not None else None
+        mtr_sel = (t_in - t_out).total_seconds() / 3600.0 if (t_out is not None and t_in is not None) else None
 
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Had excursion", "Yes" if had_exc else "No")
-    c2.metric("MTTD (hrs, selected)", f"{mttd_sel:.1f}" if mttd_sel is not None else "N/A")
-    c3.metric("MTR (hrs, selected)", f"{mtr_sel:.1f}" if mtr_sel is not None else "N/A")
-    c4.metric("On-time (selected)", "Yes" if is_on_time else "No")
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Had excursion", "Yes" if had_exc else "No")
+        c2.metric("MTTD (hrs, selected)", f"{mttd_sel:.1f}" if mttd_sel is not None else "N/A")
+        c3.metric("MTR (hrs, selected)", f"{mtr_sel:.1f}" if mtr_sel is not None else "N/A")
+        c4.metric("On-time (selected)", "Yes" if is_on_time else "No")
 
 with tabs[4]:
     st.subheader("Exception drill-through")
-    exceptions = exceptions_raw.copy()
-    # best effort parse for display
-    if "timestamp" in exceptions.columns:
-        exceptions["timestamp"] = pd.to_datetime(exceptions["timestamp"], errors="coerce")
     if exceptions.empty:
         st.info("No exceptions recorded in this sample.")
     else:
@@ -240,7 +246,5 @@ with tabs[4]:
         affected = subset["shipment_id"].dropna().unique().tolist()
         st.write(f"Affected shipments: {len(affected)}")
         st.dataframe(
-            shipments[shipments["shipment_id"].isin(affected)][
-                ["shipment_id", "carrier", "origin_ts", "delivered_ts", "status"]
-            ]
+            shipments.loc[shipments["shipment_id"].isin(affected), ["shipment_id", "carrier", "origin_ts", "delivered_ts", "status"]]
         )
