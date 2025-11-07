@@ -11,28 +11,28 @@ This repository contains a lightweight pilot that demonstrates a **knowledge man
 - **Catalog**: Entities, definitions, units, acceptable ranges, and sampling cadence. The catalog serves as the contract of record for shared vocabulary.
 - **Data Contracts**: JSON rules that specify required fields, basic types, allowed values, ranges, and key uniqueness.
 - **Lineage**: A compact graph from raw CSVs to curated tables and published metrics. Lineage is used for reproducibility and auditability.
-- **Access Model**: The app shows role-based views conceptually. Operators would see KPIs while investigators and quality leads would use end-to-end trace.
-- **Exception Taxonomy**: A governed dictionary of exception codes that stabilizes trend analysis and accountability.
+- **Access Model**: The app presents **scoped views** via Streamlit tabs. Operators see KPIs while investigators and quality leads can trace events end to end.
+- **Exception Taxonomy**: A governed dictionary of exception codes that stabilizes trend analysis and accountability. The app includes drill-through to affected shipments and CSV export.
 
 ## Metrics and Analytics
-- **Excursion rate (per shipment)**: Whether any temperature reading fell outside the 2–8 °C range.
-- **Mean time to detect (MTTD)**: Hours from shipment origin to first out-of-range reading.
-- **Mean time to resolve (MTR)**: Hours from first out-of-range reading to first return-to-range reading.
-- **On-time arrival rate**: Percent of shipments delivered within four days of origin.
-- **Control view**: Time series of temperature for a selected shipment with 2–8 °C bounds.
+- **Excursion rate (per shipment)**: Whether any temperature reading fell outside the **2–8 °C** range.
+- **Mean time to detect (MTTD)**: Hours from shipment origin to the first out-of-range reading.
+- **Mean time to resolve (MTR)**: Hours from first out-of-range reading to the first return-to-range reading.
+- **On-time arrival rate**: Percent of shipments delivered within **four days** of origin.
+- **Control view**: Time series of temperature for a selected shipment with 2–8 °C bounds, plus **per-shipment** KPIs (Had excursion, MTTD, MTR, On-time).
 
 ## Artifacts that Map to CS3 Deliverables
 - **Architecture Blueprint**: `docs/architecture.png`
 - **Tool Link**: Deploy `streamlit_app.py` on Streamlit Community Cloud to produce a public URL.
-- **Screenshots PDF**: A printable proof-of-work showing Catalog, Lineage, Quality results, Analytics, and Exceptions.
-- **Synthetic Data & Contracts**: `data/` CSVs and `contracts/contracts.json`
+- **Screenshots PDF**: A printable proof-of-work showing Catalog, Lineage, Quality (with sample offending rows), Analytics, and Exceptions.
+- **Synthetic Data & Contracts**: `data/` CSVs and `contracts/contracts.json` (includes a tiny **bad batch** to demonstrate validator hits)
 
 ## How to Use
 1. Explore the **Catalog** tab to review entities and definitions.
 2. Open **Lineage** to see how raw inputs become curated tables and published metrics.
-3. Check **Quality** for contract validations such as missing fields, type issues, and value ranges.
-4. Review **Analytics** for excursion rate, MTTD, MTR, and on-time arrival with a control view.
-5. Use **Exceptions** to drill through by exception code and inspect affected shipments.
+3. Check **Quality** for contract validations (missing fields, type issues, disallowed values, out-of-range). Expand **Details** to see sample offending rows or download the CSV.
+4. Review **Analytics** for excursion rate, MTTD, MTR, and on-time arrival. Use the control view to inspect a selected shipment. Download the KPI summary or time series.
+5. Use **Exceptions** to filter by exception code, drill through to rows, view affected shipments, and export CSVs.
 
 ## Run Locally
 ```bash
